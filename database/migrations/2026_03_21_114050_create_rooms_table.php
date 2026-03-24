@@ -18,6 +18,7 @@ return new class extends Migration
             $table->text('description');
             $table->string('image')->nuullable();
             $table->enum('status', ['available', 'full'])->default('available');
+            $table->string('facilities');
             $table->timestamps();
         });
     }

@@ -6,5 +6,12 @@ use Illuminate\Database\Eloquent\Model;
 
 class Room extends Model
 {
-    //
+    protected $fillable = [
+        'name',
+        'price',
+        'description',
+        'facilities',
+        'image',
+        'status',
+    ];
 }

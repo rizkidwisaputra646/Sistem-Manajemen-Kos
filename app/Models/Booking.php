@@ -1,0 +1,44 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
+
+class Booking extends Model
+{
+    protected $fillable = [
+        'uuid',
+        'user_id',
+        'room_id',
+        'check_in_date',
+        'check_out_date',
+        'total_price',
+        'status',
+        'snap_token',
+    ];
+
+    protected static function booted()
+    {
+        static::creating(function ($booking) {
+            $booking->uuid = (string) Str::uuid();
+        });
+    }
+
+    // PENTING: Beritahu Laravel pakai kolom 'uuid' untuk Route Binding
+    public function getRouteKeyName()
+    {
+        return 'uuid';
+    }
+
+    // Opsional: Tambahkan relasi agar lebih mudah memanggil data kamar/user nanti
+    public function room()
+    {
+        return $this->belongsTo(Room::class);
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+}
