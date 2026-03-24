@@ -71,4 +71,4 @@ Ikuti langkah-langkah berikut untuk menjalankan project di lokal:
 Project ini berlisensi di bawah [MIT License](LICENSE).
 
 ---
-Dibuat dengan ❤️ oleh **Rizki Dwi Saputra**
+Dibuat oleh **Rizki Dwi Saputra**
