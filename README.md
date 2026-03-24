@@ -1,59 +1,74 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# KosKu - Platform Reservasi Kontrakan Online ✨
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+**KosKu** adalah platform modern berbasis web untuk mengelola dan memesan kamar kontrakan/kos secara online. Dirancang dengan estetika SaaS kontemporer, platform ini menawarkan pengalaman pengguna yang mulus bagi calon penghuni dan kemudahan pengelolaan bagi pemilik properti (Admin).
 
-## About Laravel
+## 🚀 Fitur Utama
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- **UI/UX Modern & Clean**: Didesain menggunakan Tailwind CSS dengan estetika startup (SaaS).
+- **Sistem Reservasi Real-time**: Booking kamar dengan validasi tanggal otomatis menggunakan Flatpickr.
+- **Integrasi Pembayaran Aman**: Pembayaran instan melalui gateway **Midtrans** (Sandbox).
+- **Dashboard Pengguna**: Kelola pesanan aktif, lihat riwayat sewa, dan edit profil dengan mudah.
+- **Admin Panel**: Manajemen kamar (CRUD), monitoring reservasi, data penghuni, dan laporan keuangan.
+- **Responsif**: Pengalaman optimal di perangkat Desktop maupun Mobile (Bottom Nav Bar).
+- **Notifikasi Interaktif**: Feedback pengguna yang cantik menggunakan SweetAlert2.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## 🛠️ Tech Stack
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+- **Framework**: Laravel 11
+- **Styling**: Tailwind CSS (Modern Slate & Indigo Palette)
+- **Frontend Interactivity**: Alpine.js
+- **Database**: MySQL / SQLite
+- **Payment Gateway**: Midtrans API
+- **Asset Manager**: Vite
+- **Components**: 
+  - [Heroicons](https://heroicons.com/) (Icons)
+  - [Flatpickr](https://flatpickr.js.org/) (Date Picker)
+  - [SweetAlert2](https://sweetalert2.github.io/) (Alerts)
 
-## Learning Laravel
+## 📦 Instalasi
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+Ikuti langkah-langkah berikut untuk menjalankan project di lokal:
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+1. **Clone Repository**
+   ```bash
+   git clone https://github.com/rizkidwisaputra646/reservasi-kontrakan.git
+   cd reservasi-kontrakan
+   ```
 
-## Laravel Sponsors
+2. **Install Dependensi PHP & JS**
+   ```bash
+   composer install
+   npm install
+   ```
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+3. **Konfigurasi Environment**
+   Salin file `.env.example` menjadi `.env` dan sesuaikan konfigurasi database serta Midtrans Key:
+   ```bash
+   cp .env.example .env
+   php artisan key:generate
+   ```
 
-### Premium Partners
+4. **Migrasi Database & Seeding**
+   ```bash
+   php artisan migrate --seed
+   ```
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+5. **Generate Symlink Storage**
+   ```bash
+   php artisan storage:link
+   ```
 
-## Contributing
+6. **Jalankan Aplikasi**
+   ```bash
+   npm run dev
+   php artisan serve
+   ```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## 📸 Tampilan
+*(Screenshot akan ditambahkan segera)*
 
-## Code of Conduct
+## 📄 Lisensi
+Project ini berlisensi di bawah [MIT License](LICENSE).
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
-
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
-
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+---
+Dibuat dengan ❤️ oleh **Rizki Dwi Saputra**
