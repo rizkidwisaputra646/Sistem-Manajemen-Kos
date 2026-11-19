@@ -11,8 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('bookings', function (Blueprint $table) {
-            $table->date('check_out_date')->nullable()->after('check_in_date');
+        Schema::create('settings', function (Blueprint $table) {
+            $table->id();
+            $table->string('key')->unique(); // Contoh: 'hero_title', 'address'
+            $table->text('value')->nullable();
+            $table->timestamps();
         });
     }
 
@@ -21,8 +24,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('bookings', function (Blueprint $table) {
-            //
-        });
+        Schema::dropIfExists('settings');
     }
 };

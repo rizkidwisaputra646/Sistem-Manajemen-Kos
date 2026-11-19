@@ -21,7 +21,25 @@
     </x-slot>
 
     <div class="py-6">
-        <div class="max-w-3xl mx-auto">
+        <div class="max-w-3xl mx-auto space-y-4">
+            
+            <!-- Search Bar -->
+            <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between gap-3">
+                <form action="{{ route('user.bookings.history') }}" method="GET" class="flex items-center gap-2 w-full sm:w-auto">
+                    <input type="text" name="search" value="{{ request('search') }}" placeholder="Cari nama kamar atau ID..." 
+                        class="text-xs border-slate-200 rounded-xl px-3.5 py-2 w-full sm:w-64 focus:border-blue-500 focus:ring-blue-500 outline-none">
+                    <button type="submit" class="bg-blue-600 text-white text-xs px-4 py-2 rounded-xl font-bold hover:bg-blue-700 transition">
+                        Cari
+                    </button>
+                    @if(request()->filled('search'))
+                        <a href="{{ route('user.bookings.history') }}" class="text-xs text-slate-400 hover:text-blue-600 underline">Reset</a>
+                    @endif
+                </form>
+                <div class="text-xs font-semibold text-slate-500 hidden sm:block">
+                    {{ $bookings->count() }} Riwayat
+                </div>
+            </div>
+
             <div class="space-y-4">
                 @forelse($bookings as $booking)
                     <div class="relative group bg-white p-5 rounded-[2.5rem] border border-slate-200 flex items-center gap-6 transition-all duration-500 hover:bg-slate-50/50 hover:shadow-lg hover:shadow-slate-100">
@@ -51,7 +69,7 @@
                                 </div>
                                 
                                 <div class="flex items-center gap-2">
-                                    <a href="{{ route('user.bookings.show', $booking) }}" class="p-2.5 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all duration-200 opacity-0 group-hover:opacity-100 translate-x-4 group-hover:translate-x-0">
+                                    <a href="{{ route('user.bookings.show', $booking) }}" class="p-2.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all duration-200 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:translate-x-2 sm:group-hover:translate-x-0" title="Lihat Detail">
                                          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
                                     </a>
                                     <form id="delete-form-{{ $booking->id }}" action="{{ route('user.bookings.destroy', $booking) }}" method="POST">

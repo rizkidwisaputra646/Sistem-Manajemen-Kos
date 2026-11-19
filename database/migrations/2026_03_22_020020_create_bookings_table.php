@@ -12,11 +12,12 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('bookings', function (Blueprint $table) {
-            $table->id();
+            $table->uuid('id')->primary();
             $table->foreignId('user_id')->constrained()->onDelete('cascade'); // Siapa yang pesan
             $table->foreignId('room_id')->constrained()->onDelete('cascade'); // Kamar mana
             $table->date('check_in_date'); // Kapan mau mulai masuk
-            $table->decimal('total_price', 12, 2); // Harga yang harus dibayar
+            $table->date('check_out_date');
+            $table->decimal('total_price', 15, 2); // Harga yang harus dibayar
             $table->string('status')->default('pending'); // pending, success, cancelled
             $table->string('snap_token')->nullable(); // Untuk Midtrans nanti
             $table->timestamps();

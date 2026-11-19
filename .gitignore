@@ -1,8 +1,12 @@
+# Logs & Environment
 *.log
 .DS_Store
 .env
 .env.backup
 .env.production
+!.env.example
+
+# IDEs & OS Files
 .phpactor.json
 .phpunit.result.cache
 /.fleet
@@ -12,6 +16,12 @@
 /.vscode
 /.zed
 /auth.json
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+
+# Dependencies & Compiled Assets
 /node_modules
 /public/build
 /public/hot
@@ -21,4 +31,26 @@
 /vendor
 Homestead.json
 Homestead.yaml
-Thumbs.db
+
+# Backups & Archives
+*.bak
+*.backup
+backup.txt
+*.zip
+*.rar
+*.7z
+*.tar.gz
+
+# Design, Wireframes & Mockups
+/admin-dekstop/
+/mobile-fix/
+/mobile-wireframe/
+/to-figma/
+/wireframe/
+
+# Local Python Helper / Generator Scripts
+*.py
+
+# Dynamic User Uploads (Keep folder structure via .gitkeep)
+/public/images/damage_reports/*
+!/public/images/damage_reports/.gitkeep

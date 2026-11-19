@@ -8,9 +8,18 @@ use Illuminate\Http\Request;
 
 class RoomController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $rooms = Room::all();
+        $query = Room::query();
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('description', 'like', "%{$search}%")
+                  ->orWhere('status', 'like', "%{$search}%");
+            });
+        }
+        $rooms = $query->get();
         return view('admin.rooms.index', compact('rooms'));
     }
 
