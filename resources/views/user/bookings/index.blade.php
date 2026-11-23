@@ -76,7 +76,11 @@
                                 </div>
 
                                 @if (!$isPaid)
-                                    <span class="px-2 py-1 rounded-lg bg-amber-50 text-[10px] font-bold text-amber-600 border border-amber-100">PENDING</span>
+                                    @if ($booking->payment_method === 'manual')
+                                        <span class="px-2 py-1 rounded-lg bg-emerald-50 text-[10px] font-bold text-emerald-700 border border-emerald-200">BAYAR KE PEMILIK</span>
+                                    @else
+                                        <span class="px-2 py-1 rounded-lg bg-amber-50 text-[10px] font-bold text-amber-600 border border-amber-100">PENDING (ONLINE)</span>
+                                    @endif
                                 @elseif($isExpired)
                                     <span class="px-2 py-1 rounded-lg bg-rose-50 text-[10px] font-bold text-rose-600 border border-rose-100">EXPIRED</span>
                                 @else
@@ -145,11 +149,18 @@
                                             <span>Periode: <strong>{{ \Carbon\Carbon::parse($activeExt->new_check_in_date)->format('d M') }} - {{ \Carbon\Carbon::parse($activeExt->new_check_out_date)->format('d M Y') }}</strong></span>
                                             <span class="text-sm font-extrabold text-blue-900">Rp {{ number_format($activeExt->price, 0, ',', '.') }}</span>
                                         </div>
-                                        <button type="button" onclick="payExtension('{{ $payment?->snap_token }}')"
-                                            class="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm hover:shadow transition flex items-center justify-center gap-2 cursor-pointer">
-                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
-                                            Bayar Tagihan Perpanjangan
-                                        </button>
+                                        <div class="flex flex-col gap-2">
+                                            <button type="button" onclick="payExtension('{{ $payment?->snap_token }}', '{{ $activeExt->id }}', '{{ $payment?->order_id }}')"
+                                                class="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm hover:shadow transition flex items-center justify-center gap-2 cursor-pointer">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                                                Bayar Tagihan Perpanjangan
+                                            </button>
+                                            <button type="button" onclick="checkExtensionStatus('{{ $activeExt->id }}', '{{ $payment?->order_id }}')"
+                                                class="w-full py-2 px-3 bg-white hover:bg-slate-50 text-slate-700 font-bold text-[11px] rounded-xl border border-blue-200 transition flex items-center justify-center gap-1.5 cursor-pointer">
+                                                <svg class="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                                                Cek Status Pembayaran
+                                            </button>
+                                        </div>
                                     </div>
                                 @endif
                             @elseif ($isPaid && $latestExt && $latestExt->status === 'rejected' && $latestExt->created_at->diffInDays(now()) <= 7)
@@ -202,10 +213,17 @@
                                         </form>
                                     @endif
                                 @else
-                                    <a href="{{ route('user.bookings.show', $booking) }}"
-                                        class="px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-black rounded-xl shadow-sm">
-                                        Bayar Sekarang
-                                    </a>
+                                    @if ($booking->payment_method === 'manual')
+                                        <a href="{{ route('user.bookings.show', $booking) }}"
+                                            class="px-3.5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-sm transition">
+                                            Info Pembayaran
+                                        </a>
+                                    @else
+                                        <a href="{{ route('user.bookings.show', $booking) }}"
+                                            class="px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-black rounded-xl shadow-sm">
+                                            Bayar Sekarang
+                                        </a>
+                                    @endif
                                 @endif
                             </div>
                         </div>
@@ -272,7 +290,7 @@
             return false;
         }
 
-        function payExtension(snapToken) {
+        function payExtension(snapToken, extensionId, orderId) {
             if (!snapToken) {
                 Swal.fire({
                     title: 'Token Belum Siap',
@@ -295,24 +313,10 @@
 
             window.snap.pay(snapToken, {
                 onSuccess: function(result) {
-                    Swal.fire({
-                        title: 'Pembayaran Berhasil!',
-                        text: 'Masa sewa kamar Anda berhasil diperpanjang 1 bulan.',
-                        icon: 'success',
-                        confirmButtonColor: '#2563eb'
-                    }).then(() => {
-                        window.location.reload();
-                    });
+                    syncExtensionPayment(extensionId, result);
                 },
                 onPending: function(result) {
-                    Swal.fire({
-                        title: 'Menunggu Pembayaran',
-                        text: 'Silakan selesaikan pembayaran sebelum batas waktu berakhir.',
-                        icon: 'info',
-                        confirmButtonColor: '#2563eb'
-                    }).then(() => {
-                        window.location.reload();
-                    });
+                    syncExtensionPayment(extensionId, result);
                 },
                 onError: function(result) {
                     Swal.fire({
@@ -323,8 +327,91 @@
                     });
                 },
                 onClose: function() {
-                    // Modal ditutup oleh user
+                    checkExtensionStatus(extensionId, orderId, false);
                 }
+            });
+        }
+
+        function syncExtensionPayment(extensionId, result) {
+            Swal.fire({
+                title: 'Memverifikasi Pembayaran...',
+                text: 'Mohon tunggu sebentar, sistem sedang memperbarui masa sewa Anda.',
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+
+            fetch("{{ url('my-bookings/extensions') }}/" + extensionId + "/sync-payment", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify(result)
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && data.status === 'paid') {
+                    Swal.fire({
+                        title: 'Pembayaran Berhasil! 🎉',
+                        text: 'Masa sewa kamar Anda berhasil diperpanjang 1 bulan.',
+                        icon: 'success',
+                        confirmButtonColor: '#2563eb'
+                    }).then(() => {
+                        window.location.reload();
+                    });
+                } else {
+                    window.location.reload();
+                }
+            })
+            .catch(err => {
+                window.location.reload();
+            });
+        }
+
+        function checkExtensionStatus(extensionId, orderId, showAlert = true) {
+            if (showAlert) {
+                Swal.fire({
+                    title: 'Mengecek Pembayaran...',
+                    text: 'Menghubungkan ke gateway pembayaran Midtrans...',
+                    allowOutsideClick: false,
+                    didOpen: () => {
+                        Swal.showLoading();
+                    }
+                });
+            }
+
+            fetch("{{ url('my-bookings/extensions') }}/" + extensionId + "/sync-payment", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify({ order_id: orderId })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && data.status === 'paid') {
+                    Swal.fire({
+                        title: 'Pembayaran Lunas! 🎉',
+                        text: 'Masa sewa kamar Anda telah resmi diperpanjang 1 bulan.',
+                        icon: 'success',
+                        confirmButtonColor: '#2563eb'
+                    }).then(() => {
+                        window.location.reload();
+                    });
+                } else if (showAlert) {
+                    Swal.fire({
+                        title: 'Belum Terkonfirmasi',
+                        text: 'Pembayaran perpanjangan belum terverifikasi dari Midtrans. Jika Anda baru saja membayar, tunggu 1-2 menit lalu cek kembali.',
+                        icon: 'warning',
+                        confirmButtonColor: '#2563eb'
+                    });
+                }
+            })
+            .catch(err => {
+                if (showAlert) window.location.reload();
             });
         }
     </script>

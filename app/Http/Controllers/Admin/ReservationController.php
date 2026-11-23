@@ -38,11 +38,50 @@ class ReservationController extends Controller
 
     public function updateStatus(Request $request, Booking $booking)
     {
-        $booking->update([
-            'status' => $request->status
-        ]);
+        $status = $request->status;
 
-        return back()->with('success', 'Status pesanan #' . $booking->id . ' berhasil diupdate!');
+        try {
+            \Illuminate\Support\Facades\DB::transaction(function () use ($booking, $status) {
+                if ($status === 'success') {
+                    // Validasi: Cegah double booking jika kamar sudah terlanjur diisi penyewa lain yang sudah lunas
+                    $conflict = Booking::where('room_id', $booking->room_id)
+                        ->where('id', '!=', $booking->id)
+                        ->where('status', 'success')
+                        ->where('check_in_date', '<', $booking->check_out_date)
+                        ->where('check_out_date', '>', $booking->check_in_date)
+                        ->with('user')
+                        ->first();
+
+                    if ($conflict) {
+                        throw new \Exception("Gagal: Kamar ini sudah terlanjur dipesan dan lunas oleh penyewa lain ({$conflict->user->name}) untuk periode tersebut. Tidak dapat mengaktifkan pesanan ini untuk mencegah double booking.");
+                    }
+
+                    $booking->room->update(['status' => 'full']);
+
+                    \App\Models\Payment::updateOrCreate(
+                        ['booking_id' => $booking->id],
+                        [
+                            'user_id' => $booking->user_id,
+                            'order_id' => 'CASH-' . $booking->id,
+                            'amount' => $booking->total_price,
+                            'status' => 'settlement',
+                            'payment_type' => 'cash / manual',
+                            'settlement_time' => now(),
+                        ]
+                    );
+                } elseif ($status === 'cancelled') {
+                    $booking->room->update(['status' => 'available']);
+                }
+
+                $booking->update([
+                    'status' => $status
+                ]);
+            });
+
+            return back()->with('success', 'Status pesanan #' . $booking->id . ' berhasil diupdate menjadi ' . strtoupper($status) . '!');
+        } catch (\Throwable $e) {
+            return back()->with('error', $e->getMessage());
+        }
     }
 
     public function cancel(Booking $booking)

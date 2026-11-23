@@ -36,6 +36,9 @@ Homestead.yaml
 *.bak
 *.backup
 backup.txt
+simulasi_race_condition.*
+blackbox_testing_*.*
+LAPORAN_BLACK_BOX_*.*
 *.zip
 *.rar
 *.7z
@@ -54,3 +57,5 @@ backup.txt
 # Dynamic User Uploads (Keep folder structure via .gitkeep)
 /public/images/damage_reports/*
 !/public/images/damage_reports/.gitkeep
+
+LAPORAN_BLACK_BOX_*.*

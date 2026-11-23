@@ -231,8 +231,23 @@
                                                     Tolak
                                                 </button>
                                             </div>
+                                        @elseif($ext->status === 'approved')
+                                            <div class="flex items-center justify-center gap-1.5">
+                                                <form action="{{ route('admin.extensions.mark-paid', $ext) }}" method="POST" 
+                                                      onsubmit="return confirmMarkPaid(event, this, '{{ $ext->room?->name }}', '{{ $ext->user?->name }}')">
+                                                    @csrf
+                                                    <button type="submit" 
+                                                            class="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition shadow-sm cursor-pointer"
+                                                            title="Tandai pembayaran perpanjangan telah lunas secara tunai / transfer manual">
+                                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                                                        </svg>
+                                                        Lunas Tunai
+                                                    </button>
+                                                </form>
+                                            </div>
                                         @else
-                                            <span class="text-[11px] text-gray-400 italic">Telah diproses</span>
+                                            <span class="text-[11px] text-gray-400 italic">Telah diproses ({{ strtoupper($ext->status) }})</span>
                                         @endif
                                     </td>
                                 </tr>
@@ -272,6 +287,26 @@
                 confirmButtonColor: '#059669',
                 cancelButtonColor: '#64748b',
                 confirmButtonText: 'Ya, Setujui & Terbitkan Tagihan',
+                cancelButtonText: 'Batal',
+                borderRadius: '1rem'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    form.submit();
+                }
+            });
+            return false;
+        }
+
+        function confirmMarkPaid(e, form, roomName, userName) {
+            e.preventDefault();
+            Swal.fire({
+                title: 'Konfirmasi Lunas Tunai (Cash)?',
+                text: `Penghuni ${userName} (${roomName}) telah membayar biaya sewa secara tunai / transfer langsung ke pemilik? Masa sewa akan otomatis diperpanjang 1 bulan.`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#059669',
+                cancelButtonColor: '#64748b',
+                confirmButtonText: 'Ya, Konfirmasi Lunas',
                 cancelButtonText: 'Batal',
                 borderRadius: '1rem'
             }).then((result) => {

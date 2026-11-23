@@ -543,4 +543,61 @@ class RentalExtensionTest extends TestCase
             'room_id' => $room2->id,
         ]);
     }
+
+    /**
+     * 11. Sinkronisasi Pembayaran Perpanjangan Sewa via Endpoint.
+     */
+    public function test_tenant_can_sync_extension_payment_endpoint(): void
+    {
+        $checkIn = Carbon::today();
+        $checkOut = $checkIn->copy()->addMonth();
+
+        $booking = Booking::create([
+            'user_id' => $this->tenant->id,
+            'room_id' => $this->room->id,
+            'check_in_date' => $checkIn->toDateString(),
+            'check_out_date' => $checkOut->toDateString(),
+            'total_price' => $this->room->price,
+            'status' => 'success',
+        ]);
+
+        $newCheckOut = $checkOut->copy()->addMonth();
+        $extension = RentalExtension::create([
+            'booking_id' => $booking->id,
+            'user_id' => $this->tenant->id,
+            'room_id' => $this->room->id,
+            'previous_check_out_date' => $checkOut->toDateString(),
+            'new_check_in_date' => $checkOut->toDateString(),
+            'new_check_out_date' => $newCheckOut->toDateString(),
+            'price' => $this->room->price,
+            'status' => 'approved',
+            'admin_id' => $this->admin->id,
+            'approved_at' => now(),
+        ]);
+
+        $orderId = 'EXT-' . $extension->id . '-TEST';
+        Payment::create([
+            'booking_id' => $booking->id,
+            'rental_extension_id' => $extension->id,
+            'user_id' => $this->tenant->id,
+            'order_id' => $orderId,
+            'amount' => $extension->price,
+            'status' => 'pending',
+            'snap_token' => 'dummy-snap-token',
+        ]);
+
+        $res = $this->actingAs($this->tenant)->postJson(route('user.bookings.extensions.sync-payment', $extension), [
+            'order_id' => $orderId,
+            'transaction_status' => 'settlement',
+        ]);
+
+        $res->assertOk();
+        $res->assertJson([
+            'success' => true,
+            'status' => 'paid',
+        ]);
+
+        $this->assertEquals('paid', $extension->fresh()->status);
+        $this->assertEquals($newCheckOut->toDateString(), Carbon::parse($booking->fresh()->check_out_date)->toDateString());
+    }
 }

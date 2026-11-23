@@ -43,12 +43,37 @@ Route::middleware(['auth', 'verified'])->group(function () {
         }
         
         $rooms = $query->get();
-        return view('dashboard', compact('rooms'));
+
+        $userActiveRental = \App\Models\Booking::where('user_id', auth()->id())
+            ->where('status', 'success')
+            ->where('check_out_date', '>=', now()->toDateString())
+            ->with('room')
+            ->first();
+
+        $userPendingBooking = \App\Models\Booking::where('user_id', auth()->id())
+            ->where('status', 'pending')
+            ->where('created_at', '>=', now()->subMinutes(45))
+            ->with('room')
+            ->first();
+
+        return view('dashboard', compact('rooms', 'userActiveRental', 'userPendingBooking'));
     })->name('dashboard');
 
     // Route Kamar
     Route::get('/rooms/{room}', function (\App\Models\Room $room) {
-        return view('rooms.show', compact('room'));
+        $userActiveRental = \App\Models\Booking::where('user_id', auth()->id())
+            ->where('status', 'success')
+            ->where('check_out_date', '>=', now()->toDateString())
+            ->with('room')
+            ->first();
+
+        $userPendingBooking = \App\Models\Booking::where('user_id', auth()->id())
+            ->where('status', 'pending')
+            ->where('created_at', '>=', now()->subMinutes(45))
+            ->with('room')
+            ->first();
+
+        return view('rooms.show', compact('room', 'userActiveRental', 'userPendingBooking'));
     })->name('rooms.show');
     Route::get('/rooms/{room}/checkout', [BookingController::class, 'checkout'])->name('rooms.checkout');
     Route::post('/rooms/{room}/book', [BookingController::class, 'store'])->name('rooms.store');
@@ -64,8 +89,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         // 2. Baru taruh yang pakai variabel {booking} di bawah
         Route::get('/{booking}', [BookingController::class, 'show'])->name('show');
+        Route::post('/{booking}/sync-payment', [BookingController::class, 'syncPayment'])->name('sync-payment');
         Route::post('/{booking}/cancel', [BookingController::class, 'cancel'])->name('cancel');
         Route::post('/{booking}/extensions', [RentalExtensionController::class, 'store'])->name('extensions.store');
+        Route::post('/extensions/{rentalExtension}/sync-payment', [RentalExtensionController::class, 'syncPayment'])->name('extensions.sync-payment');
         Route::post('/extensions/{rentalExtension}/cancel', [RentalExtensionController::class, 'cancel'])->name('extensions.cancel');
         Route::delete('/{booking}', [BookingController::class, 'destroy'])->name('destroy');
     });
@@ -119,6 +146,7 @@ Route::middleware(['auth', 'admin']) // Pastikan kamu punya middleware 'admin'
         Route::get('/extensions', [AdminRentalExtensionController::class, 'index'])->name('extensions.index');
         Route::post('/extensions/{rentalExtension}/approve', [AdminRentalExtensionController::class, 'approve'])->name('extensions.approve');
         Route::post('/extensions/{rentalExtension}/reject', [AdminRentalExtensionController::class, 'reject'])->name('extensions.reject');
+        Route::post('/extensions/{rentalExtension}/mark-paid', [AdminRentalExtensionController::class, 'markPaid'])->name('extensions.mark-paid');
 
         // Pengingat Email
         Route::get('/reminders', [PaymentReminderController::class, 'index'])->name('reminders.index');

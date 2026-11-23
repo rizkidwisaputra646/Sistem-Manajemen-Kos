@@ -100,6 +100,20 @@
                                 <dd class="font-bold text-gray-800">{{ $booking->created_at->format('d F Y, H:i') }} WIB</dd>
                             </div>
                             <div class="py-3 flex flex-col sm:flex-row sm:justify-between gap-1">
+                                <dt class="text-gray-500 font-medium">Metode Pembayaran</dt>
+                                <dd class="font-bold text-gray-800">
+                                    @if($booking->payment_method === 'manual')
+                                        <span class="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 text-xs">
+                                            Bayar ke Pemilik (Manual)
+                                        </span>
+                                    @else
+                                        <span class="inline-flex items-center gap-1 text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-200 text-xs">
+                                            Online (Midtrans)
+                                        </span>
+                                    @endif
+                                </dd>
+                            </div>
+                            <div class="py-3 flex flex-col sm:flex-row sm:justify-between gap-1">
                                 <dt class="text-gray-500 font-medium">Durasi Sewa</dt>
                                 <dd class="font-bold text-gray-800">
                                     1 Bulan ({{ \Carbon\Carbon::parse($booking->check_in_date)->diffInDays(\Carbon\Carbon::parse($booking->check_out_date)) }} Hari)
@@ -149,19 +163,55 @@
 
                     <div class="space-y-3">
                         @if ($booking->status == 'pending')
-                            <button id="pay-button"
-                                class="w-full bg-blue-600 text-white py-3.5 px-4 rounded-xl font-bold text-base hover:bg-blue-700 shadow-sm transition-colors flex items-center justify-center gap-2 cursor-pointer">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
-                                Bayar Sekarang
-                            </button>
+                            @if ($booking->payment_method === 'manual')
+                                <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-emerald-900 text-xs space-y-2">
+                                    <div class="flex items-center gap-1.5 font-bold text-emerald-800">
+                                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                        Menunggu Konfirmasi Pemilik Kos
+                                    </div>
+                                    <p class="leading-relaxed text-emerald-700">
+                                        Anda memilih metode bayar langsung ke pemilik. Silakan serahkan uang tunai (cash) saat survey/serah terima kunci, atau transfer langsung ke rekening pemilik kos.
+                                    </p>
+                                </div>
 
-                            <form id="cancel-form" action="{{ route('user.bookings.cancel', $booking) }}" method="POST">
-                                @csrf
-                                <button type="button" onclick="confirmCancel()"
-                                    class="w-full text-gray-500 border border-gray-200 py-2.5 rounded-xl font-bold text-xs hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors uppercase mt-1 cursor-pointer">
-                                    Batalkan Pesanan
+                                @php
+                                    $waMessage = rawurlencode("Halo Pengelola KosKu, saya ingin konfirmasi pemesanan kamar:\n\n- Kamar: {$booking->room->name}\n- Nama: " . auth()->user()->name . "\n- Periode: " . \Carbon\Carbon::parse($booking->check_in_date)->format('d M Y') . " s/d " . \Carbon\Carbon::parse($booking->check_out_date)->format('d M Y') . "\n- Total: Rp " . number_format($booking->total_price, 0, ',', '.') . "\n- Metode: Bayar Langsung ke Pemilik\n\nMohon konfirmasi dan info pembayarannya ya.");
+                                @endphp
+
+                                <a href="https://wa.me/6285357597653?text={{ $waMessage }}" target="_blank"
+                                    class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3.5 px-4 rounded-xl font-bold text-sm shadow-sm transition-colors flex items-center justify-center gap-2 cursor-pointer">
+                                    <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"/></svg>
+                                    Konfirmasi via WhatsApp
+                                </a>
+
+                                <form id="cancel-form" action="{{ route('user.bookings.cancel', $booking) }}" method="POST">
+                                    @csrf
+                                    <button type="button" onclick="confirmCancel()"
+                                        class="w-full text-gray-500 border border-gray-200 py-2.5 rounded-xl font-bold text-xs hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors uppercase mt-1 cursor-pointer">
+                                        Batalkan Pesanan
+                                    </button>
+                                </form>
+                            @else
+                                <button id="pay-button"
+                                    class="w-full bg-blue-600 text-white py-3.5 px-4 rounded-xl font-bold text-base hover:bg-blue-700 shadow-sm transition-colors flex items-center justify-center gap-2 cursor-pointer">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                                    Bayar Sekarang (Midtrans)
                                 </button>
-                            </form>
+
+                                <button type="button" onclick="checkPaymentStatus()"
+                                    class="w-full bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 py-2.5 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                                    Cek Status Pembayaran
+                                </button>
+
+                                <form id="cancel-form" action="{{ route('user.bookings.cancel', $booking) }}" method="POST">
+                                    @csrf
+                                    <button type="button" onclick="confirmCancel()"
+                                        class="w-full text-gray-500 border border-gray-200 py-2.5 rounded-xl font-bold text-xs hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors uppercase mt-1 cursor-pointer">
+                                        Batalkan Pesanan
+                                    </button>
+                                </form>
+                            @endif
                         @endif
 
                         @if ($booking->status == 'success')
@@ -210,40 +260,116 @@
         payBtn.addEventListener('click', function() {
             window.snap.pay('{{ $booking->snap_token }}', {
                 onSuccess: function(result) {
-                    Swal.fire({
-                        title: 'BERHASIL',
-                        text: 'Pembayaran diterima.',
-                        icon: 'success',
-                        confirmButtonColor: '#2563eb'
-                    }).then(() => {
-                        window.location.href = "{{ route('user.bookings.index') }}";
-                    });
+                    handleSyncPayment(result);
                 },
                 onPending: function(result) {
-                    Swal.fire({
-                        title: 'Menunggu',
-                        text: 'Silakan selesaikan pembayaran sesuai petunjuk.',
-                        icon: 'info',
-                        confirmButtonColor: '#2563eb'
-                    });
+                    handleSyncPayment(result);
                 },
                 onError: function(result) {
                     Swal.fire({
-                        title: 'Gagal',
-                        text: 'Pembayaran tidak dapat diproses.',
+                        title: 'Pembayaran Gagal',
+                        text: 'Pembayaran tidak dapat diproses oleh sistem.',
                         icon: 'error',
                         confirmButtonColor: '#2563eb'
                     });
                 },
                 onClose: function() {
-                    Swal.fire({
-                        title: 'Dibatalkan',
-                        text: 'Anda menutup layar pembayaran sebelum selesai.',
-                        icon: 'warning',
-                        confirmButtonColor: '#2563eb'
-                    });
+                    // Cek status sekiranya user sudah bayar di simulator lalu menutup popup
+                    checkPaymentStatus(false);
                 }
             });
+        });
+    }
+
+    function handleSyncPayment(result) {
+        Swal.fire({
+            title: 'Memverifikasi Pembayaran...',
+            text: 'Mohon tunggu sebentar, kami sedang menyinkronkan status pesanan Anda.',
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+
+        fetch("{{ route('user.bookings.sync-payment', $booking) }}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify(result)
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.status === 'success') {
+                Swal.fire({
+                    title: 'LUNAS & BERHASIL! 🎉',
+                    text: 'Pembayaran Anda telah diterima. Selamat menikmati kamar sewa Anda!',
+                    icon: 'success',
+                    confirmButtonColor: '#2563eb'
+                }).then(() => {
+                    window.location.reload();
+                });
+            } else {
+                Swal.fire({
+                    title: 'Status Pesanan',
+                    text: data.message || 'Status pembayaran sedang diproses.',
+                    icon: 'info',
+                    confirmButtonColor: '#2563eb'
+                }).then(() => {
+                    window.location.reload();
+                });
+            }
+        })
+        .catch(err => {
+            window.location.reload();
+        });
+    }
+
+    function checkPaymentStatus(showAlert = true) {
+        if (showAlert) {
+            Swal.fire({
+                title: 'Mengecek Status...',
+                text: 'Menghubungkan ke gateway pembayaran...',
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+        }
+
+        fetch("{{ route('user.bookings.sync-payment', $booking) }}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify({})
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.status === 'success') {
+                Swal.fire({
+                    title: 'LUNAS & BERHASIL! 🎉',
+                    text: 'Pembayaran Anda telah berhasil diverifikasi!',
+                    icon: 'success',
+                    confirmButtonColor: '#2563eb'
+                }).then(() => {
+                    window.location.reload();
+                });
+            } else if (showAlert) {
+                Swal.fire({
+                    title: 'Belum Lunas',
+                    text: 'Pembayaran belum terkonfirmasi dari Midtrans. Jika sudah membayar, silakan tunggu beberapa saat atau hubungi admin.',
+                    icon: 'warning',
+                    confirmButtonColor: '#2563eb'
+                });
+            }
+        })
+        .catch(err => {
+            if (showAlert) {
+                window.location.reload();
+            }
         });
     }
 

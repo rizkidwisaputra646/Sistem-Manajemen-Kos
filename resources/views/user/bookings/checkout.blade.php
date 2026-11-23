@@ -84,54 +84,82 @@
                                 bulan sejak tanggal masuk.</p>
                         </div>
 
-                        <div class="bg-indigo-50/50 p-8 rounded-3xl border border-indigo-100/50 space-y-4 shadow-sm">
-                            <div class="flex justify-between items-center group">
-                                <span
-                                    class="text-slate-500 font-medium transition-colors group-hover:text-slate-700">Harga
-                                    Kamar</span>
+                        <!-- Pilihan Metode Pembayaran -->
+                        <div class="space-y-2.5">
+                            <label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                                Metode Pembayaran
+                            </label>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <!-- Opsi 1: Midtrans Online -->
+                                <label for="method-midtrans" 
+                                    class="payment-option relative flex items-start gap-3 p-3.5 bg-white border-2 border-indigo-600 rounded-xl cursor-pointer hover:border-indigo-600 transition-all shadow-sm">
+                                    <input type="radio" id="method-midtrans" name="payment_method" value="midtrans" checked
+                                        class="text-indigo-600 focus:ring-indigo-500 w-4 h-4 mt-0.5" onchange="switchPaymentMethod('midtrans')">
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center justify-between gap-1">
+                                            <span class="font-bold text-slate-900 text-sm">Pembayaran Online</span>
+                                            <span class="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+                                                Otomatis
+                                            </span>
+                                        </div>
+                                        <p class="text-xs text-slate-500 mt-0.5 truncate">QRIS, Virtual Account, E-Wallet</p>
+                                    </div>
+                                </label>
+
+                                <!-- Opsi 2: Bayar Langsung ke Pemilik -->
+                                <label for="method-manual" 
+                                    class="payment-option relative flex items-start gap-3 p-3.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-slate-300 transition-all shadow-sm">
+                                    <input type="radio" id="method-manual" name="payment_method" value="manual"
+                                        class="text-indigo-600 focus:ring-indigo-500 w-4 h-4 mt-0.5" onchange="switchPaymentMethod('manual')">
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center justify-between gap-1">
+                                            <span class="font-bold text-slate-900 text-sm">Bayar ke Pemilik</span>
+                                            <span class="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+                                                Manual
+                                            </span>
+                                        </div>
+                                        <p class="text-xs text-slate-500 mt-0.5 truncate">Tunai saat check-in / transfer langsung</p>
+                                    </div>
+                                </label>
+                            </div>
+
+                            <!-- Petunjuk Singkat 1 Baris -->
+                            <p id="payment-hint" class="text-xs text-slate-500 flex items-center gap-1.5 pl-1 pt-0.5">
+                                <svg class="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                                <span id="hint-text">Diverifikasi otomatis dalam 45 menit via Midtrans.</span>
+                            </p>
+                        </div>
+
+                        <!-- Ringkasan Biaya -->
+                        <div class="bg-slate-50/80 p-5 rounded-2xl border border-slate-200/80 space-y-2.5">
+                            <div class="flex justify-between items-center text-sm">
+                                <span class="text-slate-500">Harga Sewa (1 Bulan)</span>
                                 <span class="font-bold text-slate-900">Rp {{ number_format($room->price) }}</span>
                             </div>
-                            <div class="flex justify-between items-center group pb-2">
-                                <span
-                                    class="text-slate-500 font-medium transition-colors group-hover:text-slate-700 italic underline decoration-indigo-100 decoration-2">Biaya
-                                    Administrasi</span>
-                                <span class="font-bold text-slate-900 italic">Rp 0</span>
+                            <div class="flex justify-between items-center text-sm">
+                                <span class="text-slate-500">Biaya Layanan & Administrasi</span>
+                                <span class="font-bold text-emerald-600">Gratis (Rp 0)</span>
                             </div>
-                            <div class="flex justify-between items-center border-t border-indigo-100 pt-4 mt-2">
-                                <div class="flex flex-col">
-                                    <span class="font-extrabold text-slate-900 text-lg tracking-tight uppercase">Total
-                                        Pembayaran</span>
-                                    <span
-                                        class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">*Sudah
-                                        termasuk pajak</span>
+                            <div class="flex justify-between items-center border-t border-slate-200 pt-3 mt-1">
+                                <div>
+                                    <span class="font-extrabold text-slate-900 text-base">Total Tagihan</span>
+                                    <span class="block text-[10px] text-slate-400 font-medium">Sudah termasuk pajak</span>
                                 </div>
-                                <span class="font-black text-indigo-600 text-3xl tracking-tighter">Rp
-                                    {{ number_format($room->price) }}</span>
+                                <span class="font-black text-indigo-600 text-2xl tracking-tight">
+                                    Rp {{ number_format($room->price) }}
+                                </span>
                             </div>
-                        </div>
-                        
-                        <!-- Panduan Pembayaran untuk User Awam -->
-                        <div class="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-sm text-amber-800 shadow-sm">
-                            <p class="font-bold mb-2 flex items-center gap-2">
-                                <svg class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                                Panduan Pembayaran:
-                            </p>
-                            <ol class="list-decimal ml-5 space-y-2 font-medium">
-                                <li>Pilih <strong>Rencana Tanggal Masuk</strong> di atas.</li>
-                                <li>Klik tombol biru <strong>Konfirmasi & Bayar Sekarang</strong> di bawah.</li>
-                                <li>Akan muncul layar otomatis untuk memilih pembayaran (Transfer ATM, m-Banking, GoPay, atau minimarket).</li>
-                                <li>Ikuti petunjuk di layar HP Anda sampai selesai.</li>
-                            </ol>
                         </div>
 
                         <button type="submit" id="btn-submit"
-                            class="w-full bg-indigo-600 text-white py-5 rounded-2xl font-extrabold text-xl hover:bg-indigo-700 shadow-xl shadow-indigo-100 hover:shadow-indigo-200 transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-3">
-                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3"
-                                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z">
-                                </path>
+                            class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3.5 px-6 rounded-xl font-bold text-base shadow-sm hover:shadow transition-all active:scale-[0.99] cursor-pointer flex items-center justify-center gap-2">
+                            <span id="btn-text">Lanjut ke Pembayaran</span>
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
                             </svg>
-                            Konfirmasi & Bayar Sekarang
                         </button>
 
                         <p class="text-center text-[10px] text-slate-400 font-medium px-8 italic">
@@ -150,3 +178,32 @@
         </div>
     </div>
 </x-app-layout>
+
+<script>
+    function switchPaymentMethod(method) {
+        const midtransLabel = document.querySelector('label[for="method-midtrans"]');
+        const manualLabel = document.querySelector('label[for="method-manual"]');
+        const hintText = document.getElementById('hint-text');
+        const btnText = document.getElementById('btn-text');
+
+        if (method === 'manual') {
+            midtransLabel.classList.remove('border-2', 'border-indigo-600');
+            midtransLabel.classList.add('border', 'border-slate-200');
+
+            manualLabel.classList.remove('border', 'border-slate-200');
+            manualLabel.classList.add('border-2', 'border-indigo-600');
+
+            hintText.textContent = 'Bayar tunai saat serah terima kunci atau transfer ke rekening pemilik kos.';
+            btnText.textContent = 'Konfirmasi Pemesanan';
+        } else {
+            manualLabel.classList.remove('border-2', 'border-indigo-600');
+            manualLabel.classList.add('border', 'border-slate-200');
+
+            midtransLabel.classList.remove('border', 'border-slate-200');
+            midtransLabel.classList.add('border-2', 'border-indigo-600');
+
+            hintText.textContent = 'Diverifikasi otomatis dalam 45 menit via Midtrans.';
+            btnText.textContent = 'Lanjut ke Pembayaran';
+        }
+    }
+</script>

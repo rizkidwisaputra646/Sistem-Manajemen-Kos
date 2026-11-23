@@ -58,6 +58,17 @@
                                             <span class="font-bold text-gray-900">{{ $booking->user->name }}</span>
                                             <span
                                                 class="text-xs text-blue-600 font-bold uppercase tracking-tight">{{ $booking->room->name }}</span>
+                                            <div class="mt-1">
+                                                @if($booking->payment_method === 'manual')
+                                                    <span class="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                                        Bayar Tunai / Manual
+                                                    </span>
+                                                @else
+                                                    <span class="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                                                        Online (Midtrans)
+                                                    </span>
+                                                @endif
+                                            </div>
                                         </div>
                                     </td>
                                     <td class="px-8 py-6">

@@ -189,4 +189,55 @@ class RentalExtensionController extends Controller
             return back()->with('success', "Permintaan perpanjangan sewa #{$extension->id} telah ditolak.");
         });
     }
+
+    /**
+     * Admin mengonfirmasi pembayaran perpanjangan sewa secara manual / cash (tanpa Midtrans).
+     */
+    public function markPaid(Request $request, RentalExtension $rentalExtension)
+    {
+        return DB::transaction(function () use ($rentalExtension) {
+            $extension = RentalExtension::where('id', $rentalExtension->id)->lockForUpdate()->firstOrFail();
+
+            if (!in_array($extension->status, ['pending', 'approved'])) {
+                return back()->with('error', 'Perpanjangan ini sudah berstatus ' . $extension->status);
+            }
+
+            $payment = $extension->latestPayment;
+            if ($payment) {
+                $payment->update([
+                    'status' => 'settlement',
+                    'payment_type' => 'cash / manual',
+                    'settlement_time' => now(),
+                ]);
+            } else {
+                Payment::create([
+                    'booking_id' => $extension->booking_id,
+                    'rental_extension_id' => $extension->id,
+                    'user_id' => $extension->user_id,
+                    'order_id' => 'EXT-CASH-' . $extension->id,
+                    'amount' => $extension->price,
+                    'status' => 'settlement',
+                    'payment_type' => 'cash / manual',
+                    'settlement_time' => now(),
+                ]);
+            }
+
+            $extension->update([
+                'status' => 'paid',
+                'admin_id' => Auth::id(),
+                'approved_at' => $extension->approved_at ?? now(),
+            ]);
+
+            $booking = Booking::find($extension->booking_id);
+            if ($booking) {
+                $newDate = Carbon::parse($extension->new_check_out_date)->toDateString();
+                $booking->update([
+                    'check_out_date' => $newDate,
+                    'due_date' => $newDate,
+                ]);
+            }
+
+            return back()->with('success', "Perpanjangan sewa #{$extension->id} berhasil dikonfirmasi lunas secara manual (Cash/Transfer). Masa sewa telah diperpanjang!");
+        });
+    }
 }

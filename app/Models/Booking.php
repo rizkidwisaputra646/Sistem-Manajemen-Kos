@@ -22,6 +22,7 @@ class Booking extends Model
         'due_date',
         'total_price',
         'status',
+        'payment_method',
         'snap_token',
     ];
 

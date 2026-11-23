@@ -18,6 +18,50 @@ class BookingController extends Controller
 {
     public function index(Request $request)
     {
+        // Auto-cancel pesanan pending Midtrans yang sudah lewat batas 45 menit
+        Booking::where('user_id', Auth::id())
+            ->where('status', 'pending')
+            ->where(function ($q) {
+                $q->where('payment_method', '!=', 'manual')->orWhereNull('payment_method');
+            })
+            ->where('created_at', '<', now()->subMinutes(45))
+            ->update(['status' => 'cancelled']);
+
+        // Auto-cancel pesanan manual pending yang sudah lewat batas 24 jam
+        Booking::where('user_id', Auth::id())
+            ->where('status', 'pending')
+            ->where('payment_method', 'manual')
+            ->where('created_at', '<', now()->subHours(24))
+            ->update(['status' => 'cancelled']);
+
+        // Auto-sync ke Midtrans jika ada pending booking milik user yang punya snap token
+        $pendingBookings = Booking::where('user_id', Auth::id())
+            ->where('status', 'pending')
+            ->where(function ($q) {
+                $q->where('payment_method', '!=', 'manual')->orWhereNull('payment_method');
+            })
+            ->where('created_at', '>=', now()->subMinutes(45))
+            ->whereNotNull('snap_token')
+            ->get();
+
+        foreach ($pendingBookings as $pb) {
+            $this->syncBookingWithMidtrans($pb);
+        }
+
+        // Auto-sync ke Midtrans jika ada perpanjangan sewa berstatus approved yang pembayarannya pending
+        $approvedExtensions = RentalExtension::where('user_id', Auth::id())
+            ->where('status', 'approved')
+            ->whereHas('latestPayment', function ($q) {
+                $q->where('status', 'pending');
+            })
+            ->with('latestPayment')
+            ->get();
+
+        $extController = app(\App\Http\Controllers\RentalExtensionController::class);
+        foreach ($approvedExtensions as $ae) {
+            $extController->syncExtensionPayment($ae);
+        }
+
         // Cuma ambil yang masih aktif (Pending/Success & Belum Checkout)
         $query = Booking::where('user_id', Auth::id())
             ->whereIn('status', ['pending', 'success'])
@@ -69,6 +113,21 @@ class BookingController extends Controller
 
     public function checkout(Room $room)
     {
+        // Auto-cancel pesanan pending yang sudah lewat batas waktu untuk kamar ini
+        Booking::where('room_id', $room->id)
+            ->where('status', 'pending')
+            ->where(function ($q) {
+                $q->where(function ($sq) {
+                    $sq->where(function ($sub) {
+                        $sub->where('payment_method', '!=', 'manual')->orWhereNull('payment_method');
+                    })->where('created_at', '<', now()->subMinutes(45));
+                })->orWhere(function ($sq) {
+                    $sq->where('payment_method', 'manual')
+                        ->where('created_at', '<', now()->subHours(24));
+                });
+            })
+            ->update(['status' => 'cancelled']);
+
         // 1 User 1 Kamar Aktif: Cek apakah user sedang punya sewa aktif di kamar lain
         $activeRental = Booking::where('user_id', Auth::id())
             ->where('status', 'success')
@@ -81,14 +140,44 @@ class BookingController extends Controller
                 ->with('error', "Anda saat ini sedang aktif menyewa {$activeRental->room->name}. Satu akun hanya diperbolehkan menyewa satu kamar.");
         }
 
+        // Cek apakah user masih memiliki pesanan pending yang belum selesai di kamar lain
+        $pendingBooking = Booking::where('user_id', Auth::id())
+            ->where('status', 'pending')
+            ->where(function ($q) {
+                $q->where(function ($sq) {
+                    $sq->where(function ($sub) {
+                        $sub->where('payment_method', '!=', 'manual')->orWhereNull('payment_method');
+                    })->where('created_at', '>=', now()->subMinutes(45));
+                })->orWhere(function ($sq) {
+                    $sq->where('payment_method', 'manual')
+                        ->where('created_at', '>=', now()->subHours(24));
+                });
+            })
+            ->with('room')
+            ->first();
+
+        if ($pendingBooking && $pendingBooking->room_id !== $room->id) {
+            return redirect()->route('user.bookings.show', $pendingBooking)
+                ->with('error', "Anda masih memiliki pesanan yang belum diselesaikan untuk {$pendingBooking->room->name}. Silakan selesaikan pembayaran atau batalkan pesanan tersebut terlebih dahulu.");
+        }
+
         // Kita ambil yang sudah sukses PASTI terkunci
-        // DAN yang masih pending tapi belum lewat 2 jam (sesuaikan dengan expiry Midtrans kamu)
+        // DAN yang masih pending tapi belum hangus (45 min Midtrans / 24 jam Manual)
         $bookedDates = \App\Models\Booking::where('room_id', $room->id)
             ->where(function ($query) {
                 $query->where('status', 'success')
                     ->orWhere(function ($q) {
                         $q->where('status', 'pending')
-                            ->where('created_at', '>=', now()->subMinute(45)); // Kunci selama 2 jam saja
+                            ->where(function ($sq) {
+                                $sq->where(function ($ssq) {
+                                    $ssq->where(function ($sub) {
+                                        $sub->where('payment_method', '!=', 'manual')->orWhereNull('payment_method');
+                                    })->where('created_at', '>=', now()->subMinutes(45));
+                                })->orWhere(function ($ssq) {
+                                    $ssq->where('payment_method', 'manual')
+                                        ->where('created_at', '>=', now()->subHours(24));
+                                });
+                            });
                     });
             })
             ->get(['check_in_date', 'check_out_date'])
@@ -106,18 +195,33 @@ class BookingController extends Controller
 
     public function store(Request $request, Room $room)
     {
-        // Cuma minta tanggal masuk
         $request->validate([
             'check_in_date' => 'required|date|after_or_equal:today',
+            'payment_method' => 'nullable|in:midtrans,manual',
         ]);
 
+        $paymentMethod = $request->input('payment_method', 'midtrans');
         $start = Carbon::parse($request->check_in_date)->startOfDay();
-        // Otomatis set 1 bulan kemudian
         $end = $start->copy()->addMonth();
 
-        return DB::transaction(function () use ($room, $start, $end) {
+        return DB::transaction(function () use ($room, $start, $end, $paymentMethod) {
             // Lock baris Room untuk penguncian utama
             $roomLocked = Room::where('id', $room->id)->lockForUpdate()->firstOrFail();
+
+            // Auto-cancel booking pending yang sudah lewat batas waktu pada kamar ini
+            Booking::where('room_id', $roomLocked->id)
+                ->where('status', 'pending')
+                ->where(function ($q) {
+                    $q->where(function ($sq) {
+                        $sq->where(function ($sub) {
+                            $sub->where('payment_method', '!=', 'manual')->orWhereNull('payment_method');
+                        })->where('created_at', '<', now()->subMinutes(45));
+                    })->orWhere(function ($sq) {
+                        $sq->where('payment_method', 'manual')
+                            ->where('created_at', '<', now()->subHours(24));
+                    });
+                })
+                ->update(['status' => 'cancelled']);
 
             // 1 User 1 Kamar Aktif: Cek kepemilikan sewa aktif lain
             $activeRental = Booking::where('user_id', Auth::id())
@@ -130,14 +234,42 @@ class BookingController extends Controller
                 return back()->withErrors(['check_in_date' => "Anda saat ini sedang aktif menyewa {$activeRental->room->name}. Satu akun hanya diperbolehkan menyewa satu kamar."])->withInput();
             }
 
+            // Cek apakah user masih memiliki pesanan pending yang belum selesai di kamar lain
+            $pendingBooking = Booking::where('user_id', Auth::id())
+                ->where('status', 'pending')
+                ->where(function ($q) {
+                    $q->where(function ($sq) {
+                        $sq->where(function ($sub) {
+                            $sub->where('payment_method', '!=', 'manual')->orWhereNull('payment_method');
+                        })->where('created_at', '>=', now()->subMinutes(45));
+                    })->orWhere(function ($sq) {
+                        $sq->where('payment_method', 'manual')
+                            ->where('created_at', '>=', now()->subHours(24));
+                    });
+                })
+                ->with('room')
+                ->first();
+
+            if ($pendingBooking && $pendingBooking->room_id !== $roomLocked->id) {
+                return back()->withErrors(['check_in_date' => "Anda masih memiliki pesanan yang belum diselesaikan untuk {$pendingBooking->room->name}. Silakan selesaikan pembayaran atau batalkan pesanan tersebut terlebih dahulu."])->withInput();
+            }
+
             // Validasi Tindih Tanggal (Overlap) interval [start, end)
-            // A. Booking aktif atau pending yang belum hangus
             $isOverlappingBooking = Booking::where('room_id', $roomLocked->id)
                 ->where(function ($query) {
                     $query->where('status', 'success')
                         ->orWhere(function ($q) {
                             $q->where('status', 'pending')
-                                ->where('created_at', '>=', now()->subMinute(45));
+                                ->where(function ($sq) {
+                                    $sq->where(function ($ssq) {
+                                        $ssq->where(function ($sub) {
+                                            $sub->where('payment_method', '!=', 'manual')->orWhereNull('payment_method');
+                                        })->where('created_at', '>=', now()->subMinutes(45));
+                                    })->orWhere(function ($ssq) {
+                                        $ssq->where('payment_method', 'manual')
+                                            ->where('created_at', '>=', now()->subHours(24));
+                                    });
+                                });
                         });
                 })
                 ->where('check_in_date', '<', $end->toDateString())
@@ -171,8 +303,9 @@ class BookingController extends Controller
                 'room_id' => $roomLocked->id,
                 'check_in_date' => $start->toDateString(),
                 'check_out_date' => $end->toDateString(),
-                'total_price' => $roomLocked->price, // Harga paket 1 bulan
+                'total_price' => $roomLocked->price,
                 'status' => 'pending',
+                'payment_method' => $paymentMethod,
             ]);
 
             return redirect()->route('user.bookings.show', $booking);
@@ -181,36 +314,53 @@ class BookingController extends Controller
 
     public function show(Booking $booking)
     {
-        // Midtrans Config (pastikan sudah ada)
+        // User lain gak bisa ngintip id orang lain
+        if ($booking->user_id !== auth()->id() && auth()->user()->role !== 'admin') {
+            abort(403, 'Eits, mau ngintip pesanan siapa?');
+        }
+
+        // Auto-cancel jika pesanan masih pending:
+        // Midtrans: > 45 menit
+        // Manual: > 24 jam
+        if ($booking->status === 'pending') {
+            $isExpired = false;
+            if ($booking->payment_method === 'manual') {
+                $isExpired = $booking->created_at < now()->subHours(24);
+            } else {
+                $isExpired = $booking->created_at < now()->subMinutes(45);
+            }
+
+            if ($isExpired) {
+                $booking->update(['status' => 'cancelled']);
+            }
+        }
+
+        // Midtrans Config
         \Midtrans\Config::$serverKey = config('services.midtrans.serverKey');
         \Midtrans\Config::$isProduction = config('services.midtrans.isProduction');
         \Midtrans\Config::$isSanitized = true;
         \Midtrans\Config::$is3ds = true;
 
-
-        // user lain gak bisa ngintip id orang lain
-        // PERBAIKAN: Gunakan -> bukan :: dan panggil sebagai properti
-
-        if ($booking->user_id !== auth()->id() && auth()->user()->role !== 'admin') {
-            abort(403, 'Eits, mau ngintip pesanan siapa?');
+        // Auto-check status ke Midtrans jika masih pending dan punya token/payment (khusus online)
+        if ($booking->status === 'pending' && $booking->snap_token && $booking->payment_method !== 'manual') {
+            $this->syncBookingWithMidtrans($booking);
+            $booking->refresh();
         }
 
-        if (!$booking->snap_token) {
+        // Hanya buat Midtrans Snap token jika payment_method BUKAN manual
+        if ($booking->status === 'pending' && $booking->payment_method !== 'manual' && !$booking->snap_token) {
+            $remainingMinutes = max(1, 45 - (int) $booking->created_at->diffInMinutes(now()));
+            $orderId = 'KOS-' . $booking->id . '-' . strtoupper(\Illuminate\Support\Str::random(5));
+
             $params = [
                 'transaction_details' => [
-                    // PERBAIKAN: Buat Order ID unik untuk Midtrans (Format: KOS-ID-ACAK)
-                    // Biar kalau user gagal bayar & coba lagi, Midtrans nggak komplain "ID sudah ada"
-                    'order_id' => 'KOS-' . $booking->id . '-' . strtoupper(\Illuminate\Support\Str::random(5)),
+                    'order_id' => $orderId,
                     'gross_amount' => (int) $booking->total_price,
                 ],
-
                 'expiry' => [
                     'unit' => 'minute',
-                    'duration' => 30 // Pembayaran hangus dalam 2 jam
+                    'duration' => $remainingMinutes,
                 ],
-
-
-
                 'customer_details' => [
                     'first_name' => Auth::user()->name,
                     'email' => Auth::user()->email,
@@ -219,17 +369,124 @@ class BookingController extends Controller
                     [
                         'id' => $booking->room_id,
                         'price' => (int) $booking->room->price,
-                        'quantity' => 1, // Kamu bisa sesuaikan jadi jumlah hari jika mau
+                        'quantity' => 1,
                         'name' => 'Sewa Kamar: ' . $booking->room->name,
                     ]
                 ]
             ];
 
-            $snapToken = \Midtrans\Snap::getSnapToken($params);
-            $booking->update(['snap_token' => $snapToken]);
+            try {
+                $snapToken = \Midtrans\Snap::getSnapToken($params);
+                $booking->update(['snap_token' => $snapToken]);
+
+                Payment::updateOrCreate(
+                    ['booking_id' => $booking->id, 'status' => 'pending'],
+                    [
+                        'user_id' => $booking->user_id,
+                        'order_id' => $orderId,
+                        'amount' => $booking->total_price,
+                        'status' => 'pending',
+                        'snap_token' => $snapToken,
+                        'payment_expires_at' => now()->addMinutes($remainingMinutes),
+                    ]
+                );
+            } catch (\Throwable $e) {
+                Log::warning('Gagal generate Snap Token: ' . $e->getMessage());
+            }
         }
 
         return view('user.bookings.show', compact('booking'));
+    }
+
+    /**
+     * Endpoint Sinkronisasi Status Pembayaran dari Frontend Snap (onSuccess/onPending)
+     * atau tombol "Cek Status Pembayaran" di browser.
+     */
+    public function syncPayment(Request $request, Booking $booking)
+    {
+        if ($booking->user_id !== Auth::id()) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        $orderId = $request->input('order_id');
+        $payload = $request->all();
+
+        $synced = $this->syncBookingWithMidtrans($booking, $orderId, $payload);
+        $booking->refresh();
+
+        return response()->json([
+            'success' => $synced,
+            'status' => $booking->status,
+            'message' => $synced ? 'Pembayaran berhasil diverifikasi dan kamar telah aktif!' : 'Status pembayaran belum berhasil.'
+        ]);
+    }
+
+    /**
+     * Helper sinkronisasi status booking dengan Midtrans API / payload.
+     */
+    public function syncBookingWithMidtrans(Booking $booking, ?string $orderId = null, ?array $payload = null): bool
+    {
+        if ($booking->status === 'success') {
+            return true;
+        }
+
+        // Cari record payment terkait jika orderId belum diberikan
+        $payment = null;
+        if ($orderId) {
+            $payment = Payment::where('order_id', $orderId)->first();
+        }
+        if (!$payment) {
+            $payment = Payment::where('booking_id', $booking->id)->latest()->first();
+            if ($payment) {
+                $orderId = $payment->order_id;
+            }
+        }
+
+        $transactionStatus = $payload['transaction_status'] ?? null;
+
+        // Query status resmi ke Midtrans jika orderId ada
+        if ($orderId) {
+            \Midtrans\Config::$serverKey = config('services.midtrans.serverKey');
+            \Midtrans\Config::$isProduction = config('services.midtrans.isProduction');
+            \Midtrans\Config::$isSanitized = true;
+            \Midtrans\Config::$is3ds = true;
+
+            try {
+                $statusObj = \Midtrans\Transaction::status($orderId);
+                $transactionStatus = $statusObj->transaction_status ?? $transactionStatus;
+                if (!$payload) {
+                    $payload = (array) $statusObj;
+                }
+            } catch (\Throwable $e) {
+                Log::info("Sinkronisasi status Midtrans untuk {$orderId}: " . $e->getMessage());
+            }
+        }
+
+        if (in_array($transactionStatus, ['settlement', 'capture', 'success'])) {
+            DB::transaction(function () use ($booking, $orderId, $payload) {
+                $booking->update(['status' => 'success']);
+                Room::where('id', $booking->room_id)->update(['status' => 'full']);
+
+                if ($orderId) {
+                    Payment::updateOrCreate(
+                        ['order_id' => $orderId],
+                        [
+                            'booking_id' => $booking->id,
+                            'user_id' => $booking->user_id,
+                            'amount' => $booking->total_price,
+                            'status' => 'settlement',
+                            'settlement_time' => now(),
+                            'payload' => $payload,
+                        ]
+                    );
+                }
+            });
+
+            Log::info("Booking {$booking->id} berhasil disinkronisasi menjadi LUNAS (success)!");
+            return true;
+        }
+
+        return false;
     }
 
 
@@ -329,12 +586,57 @@ class BookingController extends Controller
         array_pop($orderParts);   // buang random string
         $bookingId = implode('-', $orderParts);
 
-        $booking = Booking::find($bookingId);
+        return DB::transaction(function () use ($bookingId, $orderId, $transactionStatus, $request) {
+            $booking = Booking::where('id', $bookingId)->lockForUpdate()->first();
 
-        if ($booking) {
+            if (!$booking) {
+                Log::error("Booking ID $bookingId tidak ditemukan di database!");
+                return response('Booking Not Found', 404);
+            }
+
+            // IDEMPOTENSI: Jika booking sudah lunas (success), langsung return 200 tanpa duplikasi update
+            if ($booking->status === 'success') {
+                Log::info("Booking $bookingId sudah lunas sebelumnya (idempotent skip).");
+                return response('OK', 200);
+            }
+
+            $room = Room::where('id', $booking->room_id)->lockForUpdate()->first();
+
             if ($transactionStatus === 'capture' || $transactionStatus === 'settlement') {
+                // Rekonsiliasi Callback Terlambat: jika booking sudah cancelled atau lewat 45 menit
+                $isStale = $booking->status === 'cancelled' || $booking->created_at < now()->subMinutes(45);
+
+                if ($isStale) {
+                    // Cek apakah ada booking sewa lain yang bentrok dan sudah lunas
+                    $hasConflict = Booking::where('room_id', $booking->room_id)
+                        ->where('id', '!=', $booking->id)
+                        ->where('status', 'success')
+                        ->where('check_in_date', '<', $booking->check_out_date)
+                        ->where('check_out_date', '>', $booking->check_in_date)
+                        ->exists();
+
+                    if ($hasConflict) {
+                        Payment::updateOrCreate(
+                            ['order_id' => $orderId],
+                            [
+                                'booking_id' => $booking->id,
+                                'user_id' => $booking->user_id,
+                                'amount' => $booking->total_price,
+                                'status' => 'deny',
+                                'payload' => array_merge($request->all(), [
+                                    'reconciliation_note' => 'Pembayaran diterima setelah batas waktu 45 menit dan kamar telah disewa penghuni lain. Memerlukan refund manual.',
+                                ]),
+                            ]
+                        );
+                        Log::warning("Pembayaran terlambat booking $bookingId bentrok dengan sewa lain. Tidak mengaktifkan sewa.");
+                        return response('Conflict Late Payment', 200);
+                    }
+                }
+
                 $booking->update(['status' => 'success']);
-                $booking->room->update(['status' => 'full']);
+                if ($room) {
+                    $room->update(['status' => 'full']);
+                }
 
                 Payment::updateOrCreate(
                     ['order_id' => $orderId],
@@ -351,7 +653,9 @@ class BookingController extends Controller
                 Log::info("Booking $bookingId Berhasil Dilunasi! ✅");
             } elseif (in_array($transactionStatus, ['deny', 'expire', 'cancel'])) {
                 $booking->update(['status' => 'cancelled']);
-                $booking->room->update(['status' => 'available']);
+                if ($room) {
+                    $room->update(['status' => 'available']);
+                }
 
                 Payment::updateOrCreate(
                     ['order_id' => $orderId],
@@ -366,11 +670,9 @@ class BookingController extends Controller
 
                 Log::info("Booking $bookingId Dibatalkan/Expired. ❌");
             }
-        } else {
-            Log::error("Booking ID $bookingId tidak ditemukan di database!");
-        }
 
-        return response('OK', 200);
+            return response('OK', 200);
+        });
     }
 
     public function cancel(Booking $booking)
@@ -404,8 +706,17 @@ class BookingController extends Controller
             in_array($booking->status, ['cancelled', 'expire']) ||
             ($booking->status == 'success' && $booking->check_out_date < now()->toDateString())
         ) {
+            DB::transaction(function () use ($booking) {
+                $extensionIds = $booking->extensions()->pluck('id');
 
-            $booking->delete();
+                \App\Models\Payment::where('booking_id', $booking->id)
+                    ->orWhereIn('rental_extension_id', $extensionIds)
+                    ->delete();
+
+                $booking->extensions()->delete();
+                $booking->reminderLogs()->delete();
+                $booking->delete();
+            });
 
             return back()->with('success', 'Riwayat berhasil dihapus selamanya!');
         }
@@ -417,20 +728,33 @@ class BookingController extends Controller
     {
         $userId = Auth::id();
 
-        // Hapus permanen semua yang:
-        // 1. Statusnya cancelled atau expire
-        // 2. Statusnya success tapi sudah lewat tanggal check-out (sudah keluar)
-        $deleted = Booking::where('user_id', $userId)
+        // Cari semua pesanan yang memenuhi kriteria riwayat selesai/batal
+        $query = Booking::where('user_id', $userId)
             ->where(function ($query) {
                 $query->whereIn('status', ['cancelled', 'expire'])
                     ->orWhere(function ($q) {
                         $q->where('status', 'success')
                             ->where('check_out_date', '<', now()->toDateString());
                     });
-            })
-            ->delete();
+            });
 
-        if ($deleted) {
+        $bookingIds = $query->pluck('id');
+
+        if ($bookingIds->isNotEmpty()) {
+            DB::transaction(function () use ($bookingIds) {
+                $extensionIds = \App\Models\RentalExtension::whereIn('booking_id', $bookingIds)->pluck('id');
+
+                // Hapus data anak terlebih dahulu agar bersih dari relasi payments & extensions
+                \App\Models\Payment::whereIn('booking_id', $bookingIds)
+                    ->orWhereIn('rental_extension_id', $extensionIds)
+                    ->delete();
+
+                \App\Models\RentalExtension::whereIn('booking_id', $bookingIds)->delete();
+                \App\Models\PaymentReminderLog::whereIn('booking_id', $bookingIds)->delete();
+
+                Booking::whereIn('id', $bookingIds)->delete();
+            });
+
             return back()->with('success', 'Wushhh! Semua riwayat sudah bersih.');
         }
 
