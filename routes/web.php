@@ -8,8 +8,10 @@ use App\Http\Controllers\Admin\ResidentController;
 use App\Http\Controllers\Admin\RoomController;
 use App\Http\Controllers\Admin\SettingController;
 use App\Http\Controllers\Admin\DamageReportController as AdminDamageReportController;
+use App\Http\Controllers\Admin\RentalExtensionController as AdminRentalExtensionController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\DamageReportController;
+use App\Http\Controllers\RentalExtensionController;
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
 
@@ -63,7 +65,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // 2. Baru taruh yang pakai variabel {booking} di bawah
         Route::get('/{booking}', [BookingController::class, 'show'])->name('show');
         Route::post('/{booking}/cancel', [BookingController::class, 'cancel'])->name('cancel');
-        Route::post('/{booking}/renew', [BookingController::class, 'renew'])->name('renew');
+        Route::post('/{booking}/extensions', [RentalExtensionController::class, 'store'])->name('extensions.store');
+        Route::post('/extensions/{rentalExtension}/cancel', [RentalExtensionController::class, 'cancel'])->name('extensions.cancel');
         Route::delete('/{booking}', [BookingController::class, 'destroy'])->name('destroy');
     });
 
@@ -111,6 +114,11 @@ Route::middleware(['auth', 'admin']) // Pastikan kamu punya middleware 'admin'
         Route::get('/damage-reports/{damageReport}', [AdminDamageReportController::class, 'show'])->name('damage-reports.show');
         Route::match(['put', 'patch'], '/damage-reports/{damageReport}', [AdminDamageReportController::class, 'update'])->name('damage-reports.update');
         Route::delete('/damage-reports/{damageReport}', [AdminDamageReportController::class, 'destroy'])->name('damage-reports.destroy');
+
+        // Persetujuan Perpanjangan Sewa
+        Route::get('/extensions', [AdminRentalExtensionController::class, 'index'])->name('extensions.index');
+        Route::post('/extensions/{rentalExtension}/approve', [AdminRentalExtensionController::class, 'approve'])->name('extensions.approve');
+        Route::post('/extensions/{rentalExtension}/reject', [AdminRentalExtensionController::class, 'reject'])->name('extensions.reject');
 
         // Pengingat Email
         Route::get('/reminders', [PaymentReminderController::class, 'index'])->name('reminders.index');

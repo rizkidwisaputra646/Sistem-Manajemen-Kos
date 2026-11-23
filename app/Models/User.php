@@ -56,4 +56,22 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return $this->hasMany(DamageReport::class);
     }
+
+    public function extensions()
+    {
+        return $this->hasMany(RentalExtension::class);
+    }
+
+    public function payments()
+    {
+        return $this->hasMany(Payment::class);
+    }
+
+    public function activeRental()
+    {
+        return $this->hasOne(Booking::class)
+            ->where('status', 'success')
+            ->where('check_out_date', '>=', now()->toDateString())
+            ->latestOfMany();
+    }
 }

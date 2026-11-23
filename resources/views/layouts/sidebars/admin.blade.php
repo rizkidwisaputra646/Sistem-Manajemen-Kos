@@ -29,6 +29,10 @@
             Data Pesanan
         </x-nav-link-sidebar>
 
+        <x-nav-link-sidebar :href="route('admin.extensions.index')" :active="request()->routeIs('admin.extensions.*')" icon="refresh" :badge="$adminPendingExtensionsCount ?? null">
+            Perpanjangan Sewa
+        </x-nav-link-sidebar>
+
         <x-nav-link-sidebar :href="route('admin.residents.index')" :active="request()->routeIs('admin.residents.*')" icon="user">
             Data Penghuni
         </x-nav-link-sidebar>

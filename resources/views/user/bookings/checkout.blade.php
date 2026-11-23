@@ -78,8 +78,8 @@
                         <div>
                             <label class="text-[10px] font-black uppercase text-slate-400 ml-2 italic">Rencana Tanggal
                                 Masuk</label>
-                            <input type="date" name="check_in_date" required
-                                class="w-full mt-1 border-slate-100 bg-slate-50 rounded-2xl focus:ring-indigo-500 font-bold text-slate-700">
+                            <input type="date" name="check_in_date" min="{{ date('Y-m-d') }}" required
+                                class="w-full mt-1 border-slate-200 bg-white rounded-2xl focus:ring-indigo-500 font-bold text-slate-700">
                             <p class="text-[9px] text-slate-400 mt-2 ml-2 italic">*Masa sewa otomatis berlaku selama 1
                                 bulan sejak tanggal masuk.</p>
                         </div>
@@ -150,46 +150,3 @@
         </div>
     </div>
 </x-app-layout>
-
-<script>
-    const bookedDates = @json($bookedDates);
-
-    // Inisialisasi Check-in
-    const checkInPicker = flatpickr("#check_in", {
-        disable: bookedDates,
-        dateFormat: "Y-m-d",
-        minDate: "today",
-        onChange: function(selectedDates, dateStr) {
-            // 1. Reset pilihan Check-out setiap kali tanggal Check-in berubah
-            checkOutPicker.clear();
-
-            // 2. Pasang minimal tanggal keluar adalah tanggal masuk
-            checkOutPicker.set('minDate', dateStr);
-
-            // 3. Reset batas maksimal (PENTING!)
-            checkOutPicker.set('maxDate', null);
-
-            if (selectedDates.length > 0) {
-                const selectedIn = selectedDates[0];
-
-                // Cari bookingan masa depan khusus untuk kamar ini
-                let nextBooking = bookedDates
-                    .map(d => new Date(d.from))
-                    .filter(d => d > selectedIn)
-                    .sort((a, b) => a - b)[0];
-
-                if (nextBooking) {
-                    // Hanya kunci kalau beneran ada orang lain yang mau masuk
-                    checkOutPicker.set('maxDate', nextBooking);
-                }
-            }
-        }
-    });
-
-    // Inisialisasi Check-out
-    const checkOutPicker = flatpickr("#check_out", {
-        disable: bookedDates,
-        dateFormat: "Y-m-d",
-        minDate: "today",
-    });
-</script>

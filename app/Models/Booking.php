@@ -54,6 +54,23 @@ class Booking extends Model
         return $this->hasMany(PaymentReminderLog::class, 'booking_id', 'id');
     }
 
+    public function extensions()
+    {
+        return $this->hasMany(RentalExtension::class, 'booking_id', 'id');
+    }
+
+    public function payments()
+    {
+        return $this->hasMany(Payment::class, 'booking_id', 'id');
+    }
+
+    public function activeExtension()
+    {
+        return $this->hasOne(RentalExtension::class, 'booking_id', 'id')
+            ->whereIn('status', ['pending', 'approved'])
+            ->latestOfMany();
+    }
+
     public function getEffectiveDueDateAttribute()
     {
         return $this->due_date ?? $this->check_in_date;

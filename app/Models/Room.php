@@ -25,6 +25,11 @@ class Room extends Model
         return $this->hasMany(DamageReport::class);
     }
 
+    public function extensions()
+    {
+        return $this->hasMany(RentalExtension::class);
+    }
+
     // Accessor: $room->is_currently_booked
     public function getIsCurrentlyBookedAttribute()
     {

@@ -3,9 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\Booking;
+use App\Models\Payment;
+use App\Models\RentalExtension;
 use App\Models\Room;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 use Illuminate\Support\Str;
@@ -19,7 +22,9 @@ class BookingController extends Controller
         $query = Booking::where('user_id', Auth::id())
             ->whereIn('status', ['pending', 'success'])
             ->where('check_out_date', '>=', now()->toDateString())
-            ->with('room')
+            ->with(['room', 'activeExtension.latestPayment', 'extensions' => function ($q) {
+                $q->latest();
+            }])
             ->latest();
 
         if ($request->filled('search')) {
@@ -64,6 +69,18 @@ class BookingController extends Controller
 
     public function checkout(Room $room)
     {
+        // 1 User 1 Kamar Aktif: Cek apakah user sedang punya sewa aktif di kamar lain
+        $activeRental = Booking::where('user_id', Auth::id())
+            ->where('status', 'success')
+            ->where('check_out_date', '>=', now()->toDateString())
+            ->with('room')
+            ->first();
+
+        if ($activeRental && $activeRental->room_id !== $room->id) {
+            return redirect()->route('dashboard')
+                ->with('error', "Anda saat ini sedang aktif menyewa {$activeRental->room->name}. Satu akun hanya diperbolehkan menyewa satu kamar.");
+        }
+
         // Kita ambil yang sudah sukses PASTI terkunci
         // DAN yang masih pending tapi belum lewat 2 jam (sesuaikan dengan expiry Midtrans kamu)
         $bookedDates = \App\Models\Booking::where('room_id', $room->id)
@@ -94,37 +111,72 @@ class BookingController extends Controller
             'check_in_date' => 'required|date|after_or_equal:today',
         ]);
 
-        $start = Carbon::parse($request->check_in_date);
+        $start = Carbon::parse($request->check_in_date)->startOfDay();
         // Otomatis set 1 bulan kemudian
         $end = $start->copy()->addMonth();
 
-        // Validasi Tindih Tanggal (Overlap)
-        $isOverlapping = Booking::where('room_id', $room->id)
-            ->where(function ($query) {
-                $query->where('status', 'success')
-                    ->orWhere(function ($q) {
-                        $q->where('status', 'pending')
-                            ->where('created_at', '>=', now()->subMinute(45)); // Sesuaikan dengan expiry midtrans
-                    });
-            })
-            ->where('check_in_date', '<', $end)
-            ->where('check_out_date', '>', $start)
-            ->exists();
+        return DB::transaction(function () use ($room, $start, $end) {
+            // Lock baris Room untuk penguncian utama
+            $roomLocked = Room::where('id', $room->id)->lockForUpdate()->firstOrFail();
 
-        if ($isOverlapping) {
-            return back()->withErrors(['check_in_date' => 'Maaf, kamar sudah dipesan pada tanggal tersebut. Silakan pilih tanggal lain.'])->withInput();
-        }
+            // 1 User 1 Kamar Aktif: Cek kepemilikan sewa aktif lain
+            $activeRental = Booking::where('user_id', Auth::id())
+                ->where('status', 'success')
+                ->where('check_out_date', '>=', now()->toDateString())
+                ->with('room')
+                ->first();
 
-        $booking = Booking::create([
-            'user_id' => Auth::id(),
-            'room_id' => $room->id,
-            'check_in_date' => $start,
-            'check_out_date' => $end,
-            'total_price' => $room->price, // Harga paket 1 bulan
-            'status' => 'pending',
-        ]);
+            if ($activeRental && $activeRental->room_id !== $roomLocked->id) {
+                return back()->withErrors(['check_in_date' => "Anda saat ini sedang aktif menyewa {$activeRental->room->name}. Satu akun hanya diperbolehkan menyewa satu kamar."])->withInput();
+            }
 
-        return redirect()->route('user.bookings.show', $booking);
+            // Validasi Tindih Tanggal (Overlap) interval [start, end)
+            // A. Booking aktif atau pending yang belum hangus
+            $isOverlappingBooking = Booking::where('room_id', $roomLocked->id)
+                ->where(function ($query) {
+                    $query->where('status', 'success')
+                        ->orWhere(function ($q) {
+                            $q->where('status', 'pending')
+                                ->where('created_at', '>=', now()->subMinute(45));
+                        });
+                })
+                ->where('check_in_date', '<', $end->toDateString())
+                ->where('check_out_date', '>', $start->toDateString())
+                ->exists();
+
+            if ($isOverlappingBooking) {
+                return back()->withErrors(['check_in_date' => 'Maaf, kamar sudah dipesan pada tanggal tersebut. Silakan pilih tanggal lain.'])->withInput();
+            }
+
+            // B. Periode yang sedang ditahan oleh perpanjangan sewa berstatus approved
+            $isOverlappingExtension = RentalExtension::where('room_id', $roomLocked->id)
+                ->where('status', 'approved')
+                ->where('new_check_in_date', '<', $end->toDateString())
+                ->where('new_check_out_date', '>', $start->toDateString())
+                ->whereHas('latestPayment', function ($pq) {
+                    $pq->where('status', 'pending')
+                       ->where(function ($q) {
+                           $q->whereNull('payment_expires_at')
+                             ->orWhere('payment_expires_at', '>=', now());
+                       });
+                })
+                ->exists();
+
+            if ($isOverlappingExtension) {
+                return back()->withErrors(['check_in_date' => 'Maaf, kamar pada periode tersebut sedang ditahan untuk perpanjangan sewa penghuni. Silakan pilih tanggal lain.'])->withInput();
+            }
+
+            $booking = Booking::create([
+                'user_id' => Auth::id(),
+                'room_id' => $roomLocked->id,
+                'check_in_date' => $start->toDateString(),
+                'check_out_date' => $end->toDateString(),
+                'total_price' => $roomLocked->price, // Harga paket 1 bulan
+                'status' => 'pending',
+            ]);
+
+            return redirect()->route('user.bookings.show', $booking);
+        });
     }
 
     public function show(Booking $booking)
@@ -187,37 +239,138 @@ class BookingController extends Controller
         $serverKey = config('services.midtrans.serverKey');
         $hashed = hash("sha512", $request->order_id . $request->status_code . $request->gross_amount . $serverKey);
 
-        if ($hashed == $request->signature_key) {
-            // Ambil bagian tengah dari Order ID (Format: KOS-{UUID}-{RANDOM})
-            $orderParts = explode('-', $request->order_id);
-
-            // Buang 'KOS' (bagian pertama)
-            array_shift($orderParts);
-            // Buang 'RANDOM' (bagian terakhir)
-            array_pop($orderParts);
-
-            // Gabungkan sisanya kembali menggunakan '-' agar menjadi UUID utuh
-            $bookingId = implode('-', $orderParts);
-
-            $booking = Booking::find($bookingId);
-
-            if ($booking) {
-                $status = $request->transaction_status;
-
-                if ($status == 'capture' || $status == 'settlement') {
-                    $booking->update(['status' => 'success']);
-                    $booking->room->update(['status' => 'unavailable']);
-                    Log::info("Booking $bookingId Berhasil Dilunasi! ✅");
-                } elseif ($status == 'deny' || $status == 'expire' || $status == 'cancel') {
-                    $booking->update(['status' => 'cancelled']);
-                    // Kalau batal, kamarnya dibikin tersedia lagi
-                    $booking->room->update(['status' => 'available']);
-                    Log::info("Booking $bookingId Dibatalkan/Expired. ❌");
-                }
-            } else {
-                Log::error("Booking ID $bookingId tidak ditemukan di database!");
-            }
+        if ($hashed !== $request->signature_key) {
+            Log::warning('Midtrans Signature tidak valid!', ['order_id' => $request->order_id]);
+            return response('Invalid Signature', 403);
         }
+
+        $orderId = $request->order_id;
+        $transactionStatus = $request->transaction_status;
+
+        // KASUS 1: Callback Perpanjangan Sewa (EXT-...)
+        if (str_starts_with($orderId, 'EXT-')) {
+            return DB::transaction(function () use ($orderId, $transactionStatus, $request) {
+                $payment = Payment::where('order_id', $orderId)->lockForUpdate()->first();
+
+                if (!$payment) {
+                    Log::error("Payment perpanjangan {$orderId} tidak ditemukan!");
+                    return response('Payment Not Found', 404);
+                }
+
+                // IDEMPOTENSI: Jika transaksi sudah berstatus settlement, langsung return 200 tanpa memproses ulang
+                if ($payment->status === 'settlement') {
+                    Log::info("Payment {$orderId} sudah pernah diselesaikan sebelumnya (idempotent skip).");
+                    return response('OK', 200);
+                }
+
+                $extension = RentalExtension::where('id', $payment->rental_extension_id)->lockForUpdate()->first();
+                if (!$extension) {
+                    return response('Extension Not Found', 404);
+                }
+
+                $room = Room::where('id', $extension->room_id)->lockForUpdate()->first();
+                $booking = Booking::where('id', $extension->booking_id)->lockForUpdate()->first();
+
+                if ($transactionStatus === 'capture' || $transactionStatus === 'settlement') {
+                    // Penanganan Rekonsiliasi Callback Terlambat
+                    $isLate = $payment->isExpired() || $extension->status === 'expired';
+
+                    if ($isLate) {
+                        $hasConflict = Booking::where('room_id', $extension->room_id)
+                            ->where('id', '!=', $extension->booking_id)
+                            ->where('status', 'success')
+                            ->where('check_in_date', '<', $extension->new_check_out_date->toDateString())
+                            ->where('check_out_date', '>', $extension->new_check_in_date->toDateString())
+                            ->exists();
+
+                        if ($hasConflict) {
+                            $payment->update([
+                                'status' => 'deny',
+                                'payload' => array_merge($request->all(), ['reconciliation_note' => 'Pembayaran terlambat dan kamar telah terisi sewa lain. Memerlukan refund manual.']),
+                            ]);
+                            Log::warning("Pembayaran terlambat {$orderId} bentrok dengan sewa lain. Tidak mengaktifkan sewa perpanjangan.");
+                            return response('Conflict Late Payment', 200);
+                        }
+                    }
+
+                    // Pembayaran valid & berhasil
+                    $payment->update([
+                        'status' => 'settlement',
+                        'settlement_time' => now(),
+                        'payload' => $request->all(),
+                    ]);
+
+                    $extension->update(['status' => 'paid']);
+
+                    // Perpanjang masa sewa pada penyewaan induk
+                    $booking->update([
+                        'check_out_date' => $extension->new_check_out_date->toDateString(),
+                        'due_date' => $extension->new_check_out_date->toDateString(),
+                    ]);
+
+                    Log::info("Perpanjangan sewa #{$extension->id} berhasil dilunasi & booking #{$booking->id} diperpanjang!");
+                } elseif (in_array($transactionStatus, ['deny', 'expire', 'cancel'])) {
+                    $payment->update([
+                        'status' => $transactionStatus,
+                        'payload' => $request->all(),
+                    ]);
+
+                    $extension->update(['status' => 'expired']);
+                    Log::info("Perpanjangan sewa #{$extension->id} dibatalkan/expired.");
+                }
+
+                return response('OK', 200);
+            });
+        }
+
+        // KASUS 2: Callback Booking Kamar Baru (KOS-...)
+        $orderParts = explode('-', $orderId);
+        array_shift($orderParts); // buang 'KOS'
+        array_pop($orderParts);   // buang random string
+        $bookingId = implode('-', $orderParts);
+
+        $booking = Booking::find($bookingId);
+
+        if ($booking) {
+            if ($transactionStatus === 'capture' || $transactionStatus === 'settlement') {
+                $booking->update(['status' => 'success']);
+                $booking->room->update(['status' => 'full']);
+
+                Payment::updateOrCreate(
+                    ['order_id' => $orderId],
+                    [
+                        'booking_id' => $booking->id,
+                        'user_id' => $booking->user_id,
+                        'amount' => $booking->total_price,
+                        'status' => 'settlement',
+                        'settlement_time' => now(),
+                        'payload' => $request->all(),
+                    ]
+                );
+
+                Log::info("Booking $bookingId Berhasil Dilunasi! ✅");
+            } elseif (in_array($transactionStatus, ['deny', 'expire', 'cancel'])) {
+                $booking->update(['status' => 'cancelled']);
+                $booking->room->update(['status' => 'available']);
+
+                Payment::updateOrCreate(
+                    ['order_id' => $orderId],
+                    [
+                        'booking_id' => $booking->id,
+                        'user_id' => $booking->user_id,
+                        'amount' => $booking->total_price,
+                        'status' => $transactionStatus,
+                        'payload' => $request->all(),
+                    ]
+                );
+
+                Log::info("Booking $bookingId Dibatalkan/Expired. ❌");
+            }
+        } else {
+            Log::error("Booking ID $bookingId tidak ditemukan di database!");
+        }
+
+        return response('OK', 200);
     }
 
     public function cancel(Booking $booking)
@@ -285,45 +438,6 @@ class BookingController extends Controller
     }
 
 
-
-    public function renew(Booking $booking) // Laravel otomatis mencari data berdasarkan UUID di URL
-    {
-        // Pastikan hanya pemilik yang bisa perpanjang
-        if ($booking->user_id !== auth()->id()) {
-            abort(403);
-        }
-
-        $newStart = \Carbon\Carbon::parse($booking->check_out_date);
-        $newEnd = $newStart->copy()->addMonth();
-
-        // Validasi Tindih Tanggal (Overlap) untuk perpanjangan
-        $isOverlapping = Booking::where('room_id', $booking->room_id)
-            ->where(function ($query) {
-                $query->where('status', 'success')
-                    ->orWhere(function ($q) {
-                        $q->where('status', 'pending')
-                            ->where('created_at', '>=', now()->subMinute(45));
-                    });
-            })
-            ->where('check_in_date', '<', $newEnd)
-            ->where('check_out_date', '>', $newStart)
-            ->exists();
-
-        if ($isOverlapping) {
-            return back()->with('error', 'Maaf, kamar ini sudah dipesan oleh orang lain untuk periode tersebut.');
-        }
-
-        $newBooking = Booking::create([
-            'user_id' => auth()->id(),
-            'room_id' => $booking->room_id,
-            'check_in_date' => $newStart,
-            'check_out_date' => $newEnd,
-            'total_price' => $booking->room->price,
-            'status' => 'pending',
-        ]);
-
-        return redirect()->route('user.bookings.show', $newBooking);
-    }
 
     public function downloadReceipt(Booking $booking)
     {

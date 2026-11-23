@@ -64,6 +64,7 @@
                                 elseif ($seg2 == 'damage-reports') $title = 'Pelaporan Kerusakan';
                                 elseif ($seg2 == 'reminders') $title = 'Pengingat Email';
                                 elseif ($seg2 == 'reservations') $title = 'Data Pesanan';
+                                elseif ($seg2 == 'extensions') $title = 'Perpanjangan Sewa';
                                 elseif ($seg2 == 'rooms') $title = 'Data Kamar';
                                 elseif ($seg2 == 'residents') $title = 'Data Penghuni';
                                 elseif ($seg2 == 'settings') $title = 'Pengaturan Web';

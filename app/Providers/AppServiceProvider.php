@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\DamageReport;
+use App\Models\RentalExtension;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\View;
@@ -27,6 +28,7 @@ class AppServiceProvider extends ServiceProvider
         View::composer(['layouts.app', 'layouts.sidebars.admin', 'layouts.sidebars.user', 'layouts.sidebars.user-bottom', 'dashboard'], function ($view) {
             $adminNewReportsCount = 0;
             $adminRecentReports = collect();
+            $adminPendingExtensionsCount = 0;
             $userUnreadReportsCount = 0;
 
             if (Auth::check()) {
@@ -41,6 +43,9 @@ class AppServiceProvider extends ServiceProvider
                             ->take(5)
                             ->get();
                     }
+                    if (Schema::hasTable('rental_extensions')) {
+                        $adminPendingExtensionsCount = RentalExtension::where('status', 'pending')->count();
+                    }
                 } else {
                     if (Schema::hasTable('damage_reports')) {
                         $userUnreadReportsCount = DamageReport::where('user_id', $user->id)
@@ -52,6 +57,7 @@ class AppServiceProvider extends ServiceProvider
 
             $view->with('adminNewReportsCount', $adminNewReportsCount);
             $view->with('adminRecentReports', $adminRecentReports);
+            $view->with('adminPendingExtensionsCount', $adminPendingExtensionsCount);
             $view->with('userUnreadReportsCount', $userUnreadReportsCount);
         });
     }
